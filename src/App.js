@@ -3,7 +3,7 @@ import './App.css';
 
 function App() {
   const [url, setUrl] = useState("");
-  const [data, setData] = useState("");
+  const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,23 +25,34 @@ function App() {
     }
 
     setLoading(true);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds timeout
+
     try {
       const response = await fetch("http://localhost:8080/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error("Failed to extract data.");
       }
 
       const result = await response.json();
-      setData(JSON.stringify(result, null, 2));
+      setData(result);
     } catch (err) {
-      setError(err.message);
+      if (err.name === "AbortError") {
+        setError("Request timed out. Please try again.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -66,14 +77,32 @@ function App() {
         </button>
       </div>
       {error && <div className="error-text">{error}</div>}
-      <textarea
-        readOnly
-        value={data}
-        className="response-textarea"
-        placeholder="Extracted data will appear here"
-      />
+      <div className="response-display">
+        {data ? renderJson(data) : <p className="placeholder-text">Extracted data will appear here</p>}
+      </div>
     </div>
   );
 }
+
+const renderJson = (obj) => {
+  if (typeof obj === "object" && obj !== null) {
+    return (
+      <ul className="json-block">
+        {Object.entries(obj).map(([key, value]) => {
+          const formattedKey = key.replace(/_/g, " ");
+          return (
+            <li key={key} className="json-item">
+              <span className="json-key">{formattedKey}:</span>{" "}
+              <span className="json-value">
+                {typeof value === "object" ? renderJson(value) : value.toString()}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+  return <span className="json-value">{obj.toString()}</span>;
+};
 
 export default App;
